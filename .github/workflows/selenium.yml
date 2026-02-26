@@ -2,9 +2,8 @@ name: Selenium Tests CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "main" ]
 
 jobs:
   test:
@@ -14,10 +13,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: "3.11"
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
 
       - name: Install dependencies
         run: |
@@ -28,7 +32,7 @@ jobs:
         env:
           CI: true
         run: |
-          pytest -v --html=report.html --self-contained-html
+          pytest
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4

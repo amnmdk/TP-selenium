@@ -1,0 +1,85 @@
+name: CI/CD Pipeline with Selenium Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Chrome
+        if: matrix.browser == 'chrome'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install Firefox
+        if: matrix.browser == 'firefox'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y firefox
+
+      - name: Install dependencies
+        run: |
+          cd tests
+          pip install -r requirements.txt
+          pip install webdriver-manager
+
+      - name: Run Selenium Tests
+        env:
+          CI: true
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          cd tests
+          python -m pytest test_selenium.py -v --html=../test-report-${{ matrix.browser }}.html --self-contained-html
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.browser }}
+          path: test-report-${{ matrix.browser }}.html
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Tests failed on ${context.sha.substring(0, 7)} (${{ matrix.browser }})`,
+              body: `Les tests Selenium ont echoue sur le navigateur **${{ matrix.browser }}**.\n\nCommit: ${context.sha}\nBranch: ${context.ref}\nWorkflow: ${context.workflow}\n\n[Voir les logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`
+            });
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./src
